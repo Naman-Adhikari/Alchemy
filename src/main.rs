@@ -24,6 +24,7 @@ pub struct App {
     popup_input: String,
     dirs: Vec<String>,
     dirs_state: ListState,
+    current_dir: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +46,7 @@ impl App {
             popup_input: String::new(),
             dirs,
             dirs_state,
+            current_dir: String::from("None"),
         }
     }
     fn load_dirs()-> Vec<String> {
@@ -53,6 +55,18 @@ impl App {
                 } else {
                     Vec::new()
                 }
+    }
+
+    fn right_inner_chunks(&self, area: Rect) -> [Rect; 2] {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        [chunks[0], chunks[1]]
     }
 
     fn save_dirs(&self) {
@@ -122,7 +136,7 @@ impl App {
 
     fn footer(&self, area: Rect) -> Paragraph<'_> {
         let footer_text = match self.active_block {
-            ActiveBlock::Left => " Press a to add directory | j, k to navigate | Enter to select",
+            ActiveBlock::Left => " Press a to add directory | j, k to navigate | d to delete | Enter to select",
             ActiveBlock::Right => ".............",
         };
 
@@ -175,11 +189,27 @@ impl App {
                         self.popup_input.push('a');
                     }
                 }
+                KeyCode::Enter if !self.popup => {
+                    if let Some(i) = self.dirs_state.selected() {
+                        self.current_dir = self.dirs[i].clone();
+                    }
+                }
                 KeyCode::Char(c) if self.popup => {
                     self.popup_input.push(c);
                 }
                 KeyCode::Backspace if self.popup => {
                     self.popup_input.pop();
+                }
+                KeyCode::Char('d') if !self.popup => {
+                   if let Some(selected) = self.dirs_state.selected(){
+                       self.dirs.remove(selected);
+
+                       if self.dirs.is_empty(){
+                           self.dirs_state.select(None);
+                       } else if selected >= self.dirs.len() {
+                           self.dirs_state.select(Some(self.dirs.len() - 1));
+                       }
+                   }
                 }
                 KeyCode::Enter if self.popup => {
                     if !self.popup_input.is_empty() {
@@ -226,6 +256,8 @@ impl App {
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
        let chunks = self.main_chunks(area);
+        // this is the right chunk init
+        let right_chunks = self.right_inner_chunks(chunks[1]);
 
         let left_block = self.left_block();
         let inner_left = {
@@ -237,13 +269,45 @@ impl Widget for &App {
         right_block.render(chunks[1], buf);
 
         let inner_chunk_l = self.left_inner_chunks(chunks[0]);
-        let inner_top_l = Paragraph::new(Line::from("Directory"))
+        let inner_top_l = Paragraph::new(Line::from("Directories"))
             .block(Block::default().borders(Borders::ALL))
             .alignment(Alignment::Center);
         let inner_bot_l = Block::default().borders(Borders::NONE);
 
         inner_top_l.render(inner_chunk_l[0], buf);
         inner_bot_l.render(inner_chunk_l[1], buf);
+
+        // cur dir bar
+        let current_dir_bar = Paragraph::new(format!("Current Directory: {}", self.current_dir))
+            .alignment(Alignment::Left)
+            .block(Block::default().borders(Borders::TOP));
+
+        current_dir_bar.render(right_chunks[1], buf);
+
+        //The right chunk division
+        let right_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)]).split(right_chunks[0]);
+
+        let image_block = Block::default()
+            .title("Image Alchemy")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL);
+
+        let video_block = Block::default()
+            .title("Video Alchemy")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL);
+
+        let audio_block = Block::default()
+            .title("Audio Alchemy")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL);
+
+
+            image_block.render(right_layout[0], buf);
+            video_block.render(right_layout[1], buf);
+            audio_block.render(right_layout[2], buf);
 
         let footer_layout = Layout::default()
             .direction(Direction::Vertical)
