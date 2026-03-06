@@ -25,6 +25,34 @@ pub struct App {
     dirs: Vec<String>,
     dirs_state: ListState,
     current_dir: String,
+    selected_alchemy: usize,
+    image_option: usize,
+    video_option: usize,
+    audio_option: usize,
+    imgmenu: ImageMenu,
+    vidmenu: VideoMenu,
+    audmenu: AudioMenu,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ImageMenu{
+    Main,
+    ImageConvert,
+    ImageCompress,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum VideoMenu{
+    Main,
+    VideoConvert,
+    VideoCompress,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum AudioMenu{
+    Main,
+    AudioConvert,
+    AudioCompress,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +75,13 @@ impl App {
             dirs,
             dirs_state,
             current_dir: String::from("None"),
+            selected_alchemy: 0,
+            image_option: 0,
+            audio_option: 0,
+            video_option: 0,
+            imgmenu: ImageMenu::Main,
+            vidmenu: VideoMenu::Main,
+            audmenu: AudioMenu::Main,
         }
     }
     fn load_dirs()-> Vec<String> {
@@ -121,15 +156,15 @@ impl App {
     }
 
     fn right_block(&self) -> Block {
-        let style = if self.active_block == ActiveBlock::Right {
-            Style::default().fg(Color::Blue)
-        } else {
-            Style::default()
-        };
+        //let style = if self.active_block == ActiveBlock::Right {
+            //Style::default().fg(Color::Blue)
+        //} else {
+            //Style::default()
+        //};
 
         Block::default()
             .title("Alchemy")
-            .border_style(style)
+            .border_style(Style::default())
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
     }
@@ -137,7 +172,7 @@ impl App {
     fn footer(&self, area: Rect) -> Paragraph<'_> {
         let footer_text = match self.active_block {
             ActiveBlock::Left => " Press a to add directory | j, k to navigate | d to delete | Enter to select",
-            ActiveBlock::Right => ".............",
+            ActiveBlock::Right => " Press 1, 2, 3 to select block | ",
         };
 
         Paragraph::new(footer_text)
@@ -162,6 +197,146 @@ impl App {
             .highlight_symbol("=> ");
 
         frame.render_stateful_widget(list, inner_chunk_l[1], &mut self.dirs_state);
+        // The alchemy options
+        let right_chunks = self.right_inner_chunks(chunks[1]);
+        let right_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)]).split(right_chunks[0]);
+
+        let image_block = Block::default()
+            .title(" Image Alchemy ")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL)
+            .border_style(
+                    if self.selected_alchemy == 0 && self.active_block == ActiveBlock::Right {
+                        Style::default().fg(Color::Blue)
+                    } else {
+                        Style::default()
+                    }
+                );
+
+        let video_block = Block::default()
+            .title(" Video Alchemy ")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL)
+            .border_style(
+                    if self.selected_alchemy == 1 && self.active_block == ActiveBlock::Right {
+                        Style::default().fg(Color::Blue)
+                    } else {
+                        Style::default()
+                    }
+                );
+
+        let audio_block = Block::default()
+            .title(" Audio Alchemy ")
+            .title_alignment(Alignment::Left)
+            .borders(Borders::ALL)
+            .border_style(
+                    if self.selected_alchemy == 2 && self.active_block == ActiveBlock::Right {
+                        Style::default().fg(Color::Blue)
+                    } else {
+                        Style::default()
+                    }
+                );
+
+        let image_options: Vec<&str> = match self.imgmenu {
+            ImageMenu::Main => vec![
+                "Convert",
+                "Compress",
+            ],
+
+            ImageMenu::ImageConvert => vec![
+                "PNG -> JPG",
+                "JPG -> PNG",
+                "WEBP -> PNG",
+            ],
+
+            ImageMenu::ImageCompress => vec![
+                "High",
+                "Medium",
+                "Low",
+            ],
+        };
+
+        let video_options: Vec<&str> = match self.vidmenu {
+            VideoMenu::Main => vec![
+                "Convert",
+                "Compress",
+            ],
+
+            VideoMenu::VideoConvert => vec![
+                "MP4 -> MKV",
+                "MKV -> MP4",
+            ],
+
+            VideoMenu::VideoCompress => vec![
+                "High",
+                "Medium",
+                "Low",
+            ],
+        };
+
+        let audio_options: Vec<&str> = match self.audmenu {
+            AudioMenu::Main => vec![
+                "Convert",
+                "Compress",
+            ],
+
+            AudioMenu::AudioConvert => vec![
+                "MP3 -> WAV",
+                "WAV -> MP3",
+            ],
+
+            AudioMenu::AudioCompress => vec![
+                "High",
+                "Medium",
+                "Low",
+            ],
+        };
+
+        //Image options
+        let image_items: Vec<ListItem> = image_options
+            .iter()
+            .map(|o| ListItem::new(*o))
+            .collect();
+
+        let mut image_state = ListState::default();
+        image_state.select(Some(self.image_option));
+        let image_list = List::new(image_items)
+            .block(image_block)
+            .highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black))
+            .highlight_symbol(">> ");
+
+            frame.render_stateful_widget(image_list, right_layout[0], &mut image_state);
+
+        let video_items: Vec<ListItem> = video_options
+            .iter()
+            .map(|o| ListItem::new(*o))
+            .collect();
+
+        let mut video_state = ListState::default();
+        video_state.select(Some(self.video_option));
+
+        let video_list = List::new(video_items)
+            .block(video_block)
+            .highlight_style(Style::default().bg(Color::Cyan))
+            .highlight_symbol(">> ");
+
+        frame.render_stateful_widget(video_list, right_layout[1], &mut video_state);
+
+        let audio_items: Vec<ListItem> = audio_options
+            .iter()
+            .map(|o| ListItem::new(*o))
+            .collect();
+
+        let mut audio_state = ListState::default();
+        audio_state.select(Some(self.audio_option));
+
+        let audio_list = List::new(audio_items)
+            .block(audio_block)
+            .highlight_style(Style::default().bg(Color::Cyan))
+            .highlight_symbol(">> ");
+        frame.render_stateful_widget(audio_list, right_layout[2], &mut audio_state);
 
     }
 
@@ -176,6 +351,152 @@ impl App {
                     }
                 }
                 _ => {}
+            }
+        }
+
+        match self.selected_alchemy {
+            0 => { // Image
+                match key_event.code {
+                    KeyCode::Char('j') => self.image_option += 1,
+                    KeyCode::Char('k') => {
+                        if self.image_option > 0 {
+                            self.image_option -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            1 => { // Video
+                match key_event.code {
+                    KeyCode::Char('j') => self.video_option += 1,
+                    KeyCode::Char('k') => {
+                        if self.video_option > 0 {
+                            self.video_option -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            2 => { // Audio
+                match key_event.code {
+                    KeyCode::Char('j') => self.audio_option += 1,
+                    KeyCode::Char('k') => {
+                        if self.audio_option > 0 {
+                            self.audio_option -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            _ => {}
+        }
+
+        //for menu nav in audio block
+        if self.active_block == ActiveBlock::Right && self.selected_alchemy == 2 {
+            match key_event.code {
+                KeyCode::Char('l') => {
+                    match self.audmenu {
+                        AudioMenu::Main => {
+                            match self.video_option {
+                                0 => self.audmenu = AudioMenu::AudioConvert,
+                                1 => self.audmenu = AudioMenu::AudioCompress,
+                                _ => {}
+                            }
+                        }
+
+                        AudioMenu::AudioConvert => {
+                            // do conversion action here
+                        }
+
+                        AudioMenu::AudioCompress => {
+                            // do compression action here
+                        }
+                    }
+                }
+
+                KeyCode::Char('h') => {
+                    self.audmenu = AudioMenu::Main;
+                }
+
+                _ => {}
+            }
+        }
+        //for menu nav in video block
+        if self.active_block == ActiveBlock::Right && self.selected_alchemy == 1 {
+            match key_event.code {
+                KeyCode::Char('l') => {
+                    match self.vidmenu {
+                        VideoMenu::Main => {
+                            match self.video_option {
+                                0 => self.vidmenu = VideoMenu::VideoConvert,
+                                1 => self.vidmenu = VideoMenu::VideoCompress,
+                                _ => {}
+                            }
+                        }
+
+                        VideoMenu::VideoConvert => {
+                            // do conversion action here
+                        }
+
+                        VideoMenu::VideoCompress => {
+                            // do compression action here
+                        }
+                    }
+                }
+
+                KeyCode::Char('h') => {
+                    self.vidmenu = VideoMenu::Main;
+                }
+
+                _ => {}
+            }
+        }
+        //for menu nav in image block
+        if self.active_block == ActiveBlock::Right && self.selected_alchemy == 0 {
+            match key_event.code {
+                KeyCode::Char('l') => {
+                    match self.imgmenu {
+                        ImageMenu::Main => {
+                            match self.image_option {
+                                0 => self.imgmenu = ImageMenu::ImageConvert,
+                                1 => self.imgmenu = ImageMenu::ImageCompress,
+                                _ => {}
+                            }
+                        }
+
+                        ImageMenu::ImageConvert => {
+                            // do conversion action here
+                        }
+
+                        ImageMenu::ImageCompress => {
+                            // do compression action here
+                        }
+                    }
+                }
+
+                KeyCode::Char('h') => {
+                    self.imgmenu = ImageMenu::Main;
+                }
+
+                _ => {}
+            }
+        }
+
+        if self.active_block == ActiveBlock::Right {
+            match key_event.code {
+                KeyCode::Char('1') => {
+                    self.selected_alchemy = 0;
+                }
+                KeyCode::Char('2') => {
+                    self.selected_alchemy = 1;
+                }
+                KeyCode::Char('3') => {
+                    self.selected_alchemy = 2;
+                }
+                _=> {}
             }
         }
 
@@ -259,6 +580,7 @@ impl Widget for &App {
         // this is the right chunk init
         let right_chunks = self.right_inner_chunks(chunks[1]);
 
+
         let left_block = self.left_block();
         let inner_left = {
             let temp_block = self.left_block(); // create a temp just for inner()
@@ -284,30 +606,6 @@ impl Widget for &App {
 
         current_dir_bar.render(right_chunks[1], buf);
 
-        //The right chunk division
-        let right_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)]).split(right_chunks[0]);
-
-        let image_block = Block::default()
-            .title("Image Alchemy")
-            .title_alignment(Alignment::Left)
-            .borders(Borders::ALL);
-
-        let video_block = Block::default()
-            .title("Video Alchemy")
-            .title_alignment(Alignment::Left)
-            .borders(Borders::ALL);
-
-        let audio_block = Block::default()
-            .title("Audio Alchemy")
-            .title_alignment(Alignment::Left)
-            .borders(Borders::ALL);
-
-
-            image_block.render(right_layout[0], buf);
-            video_block.render(right_layout[1], buf);
-            audio_block.render(right_layout[2], buf);
 
         let footer_layout = Layout::default()
             .direction(Direction::Vertical)
