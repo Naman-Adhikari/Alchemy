@@ -1,5 +1,7 @@
 use std::io;
+use std::fmt;
 use std::fs;
+use std::process::Command;
 
 use crossterm::event::KeyEventKind;
 use crossterm::event::{self, Event, KeyCode};
@@ -32,6 +34,23 @@ pub struct App {
     imgmenu: ImageMenu,
     vidmenu: VideoMenu,
     audmenu: AudioMenu,
+    left_mode: LeftMode,
+    files: Vec<String>,
+    files_state: ListState,
+    path_stack: Vec<String>,
+    alchemy_status: Option<StatusMessage>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum StatusMessage {
+    Success(String),
+    Error(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum LeftMode {
+    Directories,
+    Files,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,6 +80,15 @@ enum ActiveBlock {
     Right,
 }
 
+impl fmt::Display for StatusMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StatusMessage::Success(msg) => write!(f, "Success: {}", msg),
+            StatusMessage::Error(msg) => write!(f, "Error: {}", msg),
+        }
+    }
+}
+
 impl App {
     pub fn new() -> Self {
         let mut dirs_state = ListState::default();
@@ -82,8 +110,59 @@ impl App {
             imgmenu: ImageMenu::Main,
             vidmenu: VideoMenu::Main,
             audmenu: AudioMenu::Main,
+            left_mode: LeftMode::Directories,
+            files: Vec::new(),
+            files_state: ListState::default(),
+            path_stack: Vec::new(),
+            alchemy_status: None,
         }
     }
+
+    //helper functions to carry out the conversion tasks
+    fn convert_png_to_jpg(&self, input: &str, output: &str) -> Result<(), String> {
+        let status = Command::new("magick")
+            .arg(input)
+            .arg(output)
+            .status()
+            .expect("Failed to run ImageMagick");
+        if status.success() {
+                Ok(())
+            } else {
+                Err(format!("ImageMagick returned non-zero exit code: {}", status))
+            }
+    }
+
+    fn convert_jpg_to_png(&self, input: &str, output: &str) -> Result<(), String>{
+        let status = Command::new("magick")
+            .arg(input)
+            .arg(output)
+            .status()
+            .expect("Failed to run ImageMagick");
+        if status.success() {
+                Ok(())
+            } else {
+                Err(format!("ImageMagick returned non-zero exit code: {}", status))
+            }
+    }
+
+    fn load_files(path: &str) -> Vec<String> {
+        if let Ok(entries) = fs::read_dir(path) {
+            entries
+                .filter_map(|e| e.ok())
+                .map(|e| {
+                    let file_name = e.file_name().to_string_lossy().to_string();
+                    if e.path().is_dir() {
+                        format!("{}/", file_name)
+                    } else {
+                        file_name
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
     fn load_dirs()-> Vec<String> {
         if let Ok(content) = fs::read_to_string("dirs.txt") {
                     content.lines().map(|s| s.to_string()).collect()
@@ -169,34 +248,44 @@ impl App {
             .borders(Borders::ALL)
     }
 
-    fn footer(&self, area: Rect) -> Paragraph<'_> {
-        let footer_text = match self.active_block {
-            ActiveBlock::Left => " Press a to add directory | j, k to navigate | d to delete | Enter to select",
-            ActiveBlock::Right => " Press 1, 2, 3 to select block | ",
-        };
+    fn footer(&self, _area: Rect) -> Paragraph<'_> {
+let footer_text = match self.active_block {
+    ActiveBlock::Left if self.popup => {
+        " Press Enter to add directory to list | Please add absolute path :)".to_string()
+    }
+    ActiveBlock::Left => {
+        let base = " a -> add directory | d -> delete directory | j,k,l,h -> Navigation | 1,2,3 -> Select Alchemy Block".to_string();
+        if let Some(ref status) = self.alchemy_status {
+            format!(" {}", status)
+        } else {
+            base
+        }
+    }
+    ActiveBlock::Right => {
+        let base = " TAB -> Go back to directory list".to_string();
+        if let Some(ref status) = self.alchemy_status {
+            format!(" {}", status)
+        } else {
+            base
+        }
+    }
+};
 
         Paragraph::new(footer_text)
-            .style(Style::default())
+            .style(Style::default().fg(Color::Red))
             .alignment(Alignment::Left)
     }
+    // i dont watnt he success message to persisst
+   fn switch_active_block(&mut self, new_block: ActiveBlock) {
+    self.active_block = new_block;
+    self.alchemy_status = None;
+}
 
     fn draw(&mut self, frame: &mut Frame) {
         frame.render_widget(&*self, frame.area());
         let chunks = self.main_chunks(frame.area());
         let inner_chunk_l = self.left_inner_chunks(chunks[0]);
 
-
-        let dirs_list: Vec<ListItem> = self
-            .dirs
-            .iter()
-            .map(|i| ListItem::new(i.as_str()))
-            .collect();
-
-        let list = List::new(dirs_list)
-            .highlight_style(Style::default().bg(Color::Cyan).fg(Color::White))
-            .highlight_symbol("=> ");
-
-        frame.render_stateful_widget(list, inner_chunk_l[1], &mut self.dirs_state);
         // The alchemy options
         let right_chunks = self.right_inner_chunks(chunks[1]);
         let right_layout = Layout::default()
@@ -248,7 +337,6 @@ impl App {
             ImageMenu::ImageConvert => vec![
                 "PNG -> JPG",
                 "JPG -> PNG",
-                "WEBP -> PNG",
             ],
 
             ImageMenu::ImageCompress => vec![
@@ -337,7 +425,44 @@ impl App {
             .highlight_style(Style::default().bg(Color::Cyan))
             .highlight_symbol(">> ");
         frame.render_stateful_widget(audio_list, right_layout[2], &mut audio_state);
+        //For directories and file mode
+        match self.left_mode {
+            LeftMode::Directories => {
+                let dirs_list: Vec<ListItem> = self
+                    .dirs
+                    .iter()
+                    .map(|d| ListItem::new(d.as_str()))
+                    .collect();
 
+                let list = List::new(dirs_list)
+                    .highlight_style(Style::default().bg(Color::Cyan))
+                    .highlight_symbol("=> ");
+
+                frame.render_stateful_widget(
+                    list,
+                    inner_chunk_l[1],
+                    &mut self.dirs_state,
+                );
+            }
+
+            LeftMode::Files => {
+                let file_list: Vec<ListItem> = self
+                    .files
+                    .iter()
+                    .map(|f| ListItem::new(f.as_str()))
+                    .collect();
+
+                let list = List::new(file_list)
+                    .highlight_style(Style::default().bg(Color::Yellow))
+                    .highlight_symbol("=> ");
+
+                frame.render_stateful_widget(
+                    list,
+                    inner_chunk_l[1],
+                    &mut self.files_state,
+                );
+            }
+        }
     }
 
     fn handle_key_event(&mut self, key_event: event::KeyEvent) -> io::Result<()> {
@@ -345,54 +470,86 @@ impl App {
             match key_event.code {
                 KeyCode::Char('q') => self.exit = true,
                 KeyCode::Tab => {
-                    self.active_block = match self.active_block {
+                    let new_block = match self.active_block {
                         ActiveBlock::Left => ActiveBlock::Right,
                         ActiveBlock::Right => ActiveBlock::Left,
-                    }
+                    };
+                    self.switch_active_block(new_block);
+                }
+                _ => {}
+            }
+
+        }
+        //Keybind for conversionss babay
+        if self.active_block == ActiveBlock::Right
+            && self.selected_alchemy == 0
+            && self.imgmenu == ImageMenu::ImageConvert
+        {
+            match key_event.code {
+                KeyCode::Enter => {
+                    let result = if self.current_dir.ends_with(".png") {
+                        let input = self.current_dir.clone();
+                        let output = self.current_dir.replace(".png", ".jpg");
+                        self.convert_png_to_jpg(&input, &output)
+                    } else if self.current_dir.ends_with(".jpg") {
+                        let input = self.current_dir.clone();
+                        let output = self.current_dir.replace(".jpg", ".png");
+                        self.convert_png_to_jpg(&input, &output)
+                    } else {
+                        Err("Unsupported file type".to_string())
+                    };
+
+                    // Update status message based on the result
+                    self.alchemy_status = Some(match result {
+                        Ok(_) => StatusMessage::Success("Conversion done!".to_string()),
+                        Err(e) => StatusMessage::Error(e),
+                    });
                 }
                 _ => {}
             }
         }
 
-        match self.selected_alchemy {
-            0 => { // Image
-                match key_event.code {
-                    KeyCode::Char('j') => self.image_option += 1,
-                    KeyCode::Char('k') => {
-                        if self.image_option > 0 {
-                            self.image_option -= 1;
+        if self.active_block == ActiveBlock::Right {
+            match self.selected_alchemy  {
+                0 => { // Image
+                    match key_event.code {
+                        KeyCode::Char('j') => self.image_option += 1,
+                        KeyCode::Char('k') => {
+                            if self.image_option > 0 {
+                                self.image_option -= 1;
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
 
-            1 => { // Video
-                match key_event.code {
-                    KeyCode::Char('j') => self.video_option += 1,
-                    KeyCode::Char('k') => {
-                        if self.video_option > 0 {
-                            self.video_option -= 1;
+                1 => { // Video
+                    match key_event.code {
+                        KeyCode::Char('j') => self.video_option += 1,
+                        KeyCode::Char('k') => {
+                            if self.video_option > 0 {
+                                self.video_option -= 1;
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
 
-            2 => { // Audio
-                match key_event.code {
-                    KeyCode::Char('j') => self.audio_option += 1,
-                    KeyCode::Char('k') => {
-                        if self.audio_option > 0 {
-                            self.audio_option -= 1;
+                2 => { // Audio
+                    match key_event.code {
+                        KeyCode::Char('j') => self.audio_option += 1,
+                        KeyCode::Char('k') => {
+                            if self.audio_option > 0 {
+                                self.audio_option -= 1;
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
 
-            _ => {}
-        }
+                _ => {}
+            }
+}
 
         //for menu nav in audio block
         if self.active_block == ActiveBlock::Right && self.selected_alchemy == 2 {
@@ -485,18 +642,138 @@ impl App {
             }
         }
 
-        if self.active_block == ActiveBlock::Right {
             match key_event.code {
                 KeyCode::Char('1') => {
+                    self.active_block = ActiveBlock::Right;
                     self.selected_alchemy = 0;
                 }
                 KeyCode::Char('2') => {
+                    self.active_block = ActiveBlock::Right;
                     self.selected_alchemy = 1;
                 }
                 KeyCode::Char('3') => {
+                    self.active_block = ActiveBlock::Right;
                     self.selected_alchemy = 2;
                 }
                 _=> {}
+            }
+
+        if self.active_block == ActiveBlock::Left && key_event.kind == KeyEventKind::Press && !self.popup {
+            match key_event.code {
+                KeyCode::Char('l') => {
+        match self.left_mode {
+
+                LeftMode::Directories => {
+                    if let Some(i) = self.dirs_state.selected() {
+                        let dir = &self.dirs[i];
+
+                        self.files = App::load_files(dir);
+                        self.files_state.select(Some(0));
+                        self.left_mode = LeftMode::Files;
+
+                        self.path_stack.clear();
+                        self.path_stack.push(dir.clone());
+                    }
+                }
+
+                LeftMode::Files => {
+                    if let Some(i) = self.files_state.selected() {
+
+                        if let Some(current_path) = self.path_stack.last() {
+
+                            let name = &self.files[i];
+
+                            if name.ends_with("/") {
+
+                                let new_path =
+                                    format!("{}/{}", current_path, name.trim_end_matches('/'));
+
+                                self.files = App::load_files(&new_path);
+                                self.files_state.select(Some(0));
+
+                                self.path_stack.push(new_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+                        KeyCode::Char('h') => {
+
+                            if self.left_mode == LeftMode::Files {
+
+                                if self.path_stack.len() > 1 {
+
+                                    self.path_stack.pop();
+
+                                    if let Some(prev) = self.path_stack.last() {
+                                        self.files = App::load_files(prev);
+                                        self.files_state.select(Some(0));
+                                    }
+
+                                } else {
+
+                                    self.left_mode = LeftMode::Directories;
+                                    self.path_stack.clear();
+
+                                }
+                            }
+                        }
+ KeyCode::Char('j') => {
+            match self.left_mode {
+
+                LeftMode::Directories => {
+                    if !self.dirs.is_empty() {
+                        let i = match self.dirs_state.selected() {
+                            Some(i) if i + 1 < self.dirs.len() => i + 1,
+                            Some(i) => i,
+                            None => 0,
+                        };
+                        self.dirs_state.select(Some(i));
+                    }
+                }
+
+                LeftMode::Files => {
+                    if !self.files.is_empty() {
+                        let i = match self.files_state.selected() {
+                            Some(i) if i + 1 < self.files.len() => i + 1,
+                            Some(i) => i,
+                            None => 0,
+                        };
+                        self.files_state.select(Some(i));
+                    }
+                }
+            }
+        }
+
+        // MOVE UP
+        KeyCode::Char('k') => {
+            match self.left_mode {
+
+                LeftMode::Directories => {
+                    if !self.dirs.is_empty() {
+                        let i = match self.dirs_state.selected() {
+                            Some(i) if i > 0 => i - 1,
+                            Some(i) => 0,
+                            None => 0,
+                        };
+                        self.dirs_state.select(Some(i));
+                    }
+                }
+
+                LeftMode::Files => {
+                    if !self.files.is_empty() {
+                        let i = match self.files_state.selected() {
+                            Some(i) if i > 0 => i - 1,
+                            Some(i) => 0,
+                            None => 0,
+                        };
+                        self.files_state.select(Some(i));
+                    }
+                }
+            }
+        }
+                _=>{}
             }
         }
 
@@ -510,11 +787,28 @@ impl App {
                         self.popup_input.push('a');
                     }
                 }
-                KeyCode::Enter if !self.popup => {
+
+        KeyCode::Enter if !self.popup => {
+            match self.left_mode {
+
+                LeftMode::Directories => {
                     if let Some(i) = self.dirs_state.selected() {
                         self.current_dir = self.dirs[i].clone();
                     }
                 }
+
+                LeftMode::Files => {
+                    if let Some(i) = self.files_state.selected() {
+                        if let Some(base) = self.path_stack.last() {
+                            let name = &self.files[i];
+
+                            self.current_dir =
+                                format!("{}/{}", base, name.trim_end_matches('/'));
+                        }
+                    }
+                }
+            }
+        }
                 KeyCode::Char(c) if self.popup => {
                     self.popup_input.push(c);
                 }
@@ -600,7 +894,7 @@ impl Widget for &App {
         inner_bot_l.render(inner_chunk_l[1], buf);
 
         // cur dir bar
-        let current_dir_bar = Paragraph::new(format!("Current Directory: {}", self.current_dir))
+        let current_dir_bar = Paragraph::new(format!("Selected File: {}", self.current_dir))
             .alignment(Alignment::Left)
             .block(Block::default().borders(Borders::TOP));
 

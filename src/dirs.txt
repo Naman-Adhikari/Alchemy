@@ -1,2 +1,2 @@
-NMN/Luminarium/
-Videos/Recordings
+/home/lostfromlight/NMN/Academia/
+/home/lostfromlight/NMN/Luminarium
