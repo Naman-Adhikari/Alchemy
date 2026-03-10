@@ -1,2 +1,3 @@
 /home/lostfromlight/NMN/Academia/
 /home/lostfromlight/NMN/Luminarium
+/home/lostfromlight/Videos/

@@ -1,7 +1,7 @@
 use std::io;
 use std::fmt;
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crossterm::event::KeyEventKind;
 use crossterm::event::{self, Event, KeyCode};
@@ -132,18 +132,138 @@ impl App {
             }
     }
 
-    fn convert_jpg_to_png(&self, input: &str, output: &str) -> Result<(), String>{
-        let status = Command::new("magick")
-            .arg(input)
-            .arg(output)
+    fn mp4_to_mkv(&self, input: &str, output: &str) -> Result<(), String> {
+        let status = Command::new("ffmpeg")
+            .args(["-i", input, "-c", "copy", output])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
-            .expect("Failed to run ImageMagick");
+            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
         if status.success() {
+            Ok(())
+        } else {
+            Err(format!("ffmpeg exited with code: {}", status))
+        }
+    }
+
+    fn mp4_to_webm(&self, input: &str, output: &str) -> Result<(), String>{
+            let status = Command::new("ffmpeg")
+                .args([
+                    "-i", input,
+                    "-c:v", "libvpx-vp9",
+                    "-c:a", "libopus",
+                    output
+                ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+                .status()
+                .expect("Failed to convert MP4 to WEBM");
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("ffmpeg exited with code: {}", status))
+        }
+        }
+
+    fn webm_to_mp4(&self, input: &str, output: &str) -> Result<(), String>{
+            let status = Command::new("ffmpeg")
+                .args([
+                    "-i", input,
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    output
+                ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+                .status()
+                .expect("Failed to convert MP4 to WEBM");
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("ffmpeg exited with code: {}", status))
+        }
+        }
+
+        fn mp3_to_wav(&self, input: &str, output: &str) -> Result<(), String> {
+            use std::process::{Command, Stdio};
+
+            let status = Command::new("ffmpeg")
+                .args(["-i", input, "-c:a", "pcm_s16le", output])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+            if status.success() {
                 Ok(())
             } else {
-                Err(format!("ImageMagick returned non-zero exit code: {}", status))
+                Err(format!("ffmpeg exited with {}", status))
             }
-    }
+        }
+
+        fn wav_to_mp3(&self, input: &str, output: &str) -> Result<(), String> {
+            use std::process::{Command, Stdio};
+
+            let status = Command::new("ffmpeg")
+                .args(["-i", input, "-c:a", "libmp3lame", output])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("ffmpeg exited with {}", status))
+            }
+        }
+
+        fn mp3_to_m4a(&self, input: &str, output: &str) -> Result<(), String> {
+            use std::process::{Command, Stdio};
+
+            let status = Command::new("ffmpeg")
+                .args([
+                    "-i", input,
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    output
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("ffmpeg exited with {}", status))
+            }
+        }
+
+        fn m4a_to_mp3(&self, input: &str, output: &str) -> Result<(), String> {
+            use std::process::{Command, Stdio};
+
+            let status = Command::new("ffmpeg")
+                .args([
+                    "-i", input,
+                    "-c:a", "libmp3lame",
+                    "-b:a", "192k",
+                    output
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("ffmpeg exited with {}", status))
+            }
+        }
 
     fn load_files(path: &str) -> Vec<String> {
         if let Ok(entries) = fs::read_dir(path) {
@@ -331,7 +451,7 @@ let footer_text = match self.active_block {
         let image_options: Vec<&str> = match self.imgmenu {
             ImageMenu::Main => vec![
                 "Convert",
-                "Compress",
+                //"Compress",
             ],
 
             ImageMenu::ImageConvert => vec![
@@ -349,12 +469,14 @@ let footer_text = match self.active_block {
         let video_options: Vec<&str> = match self.vidmenu {
             VideoMenu::Main => vec![
                 "Convert",
-                "Compress",
+                //"Compress",
             ],
 
             VideoMenu::VideoConvert => vec![
                 "MP4 -> MKV",
-                "MKV -> MP4",
+                "MKV → MP4",
+                "MP4 → WEBM",
+                "WEBM → MP4",
             ],
 
             VideoMenu::VideoCompress => vec![
@@ -367,12 +489,14 @@ let footer_text = match self.active_block {
         let audio_options: Vec<&str> = match self.audmenu {
             AudioMenu::Main => vec![
                 "Convert",
-                "Compress",
+                //"Compress",
             ],
 
             AudioMenu::AudioConvert => vec![
                 "MP3 -> WAV",
                 "WAV -> MP3",
+                "MP3 -> M4A",
+                "M4A -> MP3",
             ],
 
             AudioMenu::AudioCompress => vec![
@@ -407,7 +531,7 @@ let footer_text = match self.active_block {
 
         let video_list = List::new(video_items)
             .block(video_block)
-            .highlight_style(Style::default().bg(Color::Cyan))
+            .highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black))
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(video_list, right_layout[1], &mut video_state);
@@ -422,7 +546,7 @@ let footer_text = match self.active_block {
 
         let audio_list = List::new(audio_items)
             .block(audio_block)
-            .highlight_style(Style::default().bg(Color::Cyan))
+            .highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black))
             .highlight_symbol(">> ");
         frame.render_stateful_widget(audio_list, right_layout[2], &mut audio_state);
         //For directories and file mode
@@ -435,7 +559,7 @@ let footer_text = match self.active_block {
                     .collect();
 
                 let list = List::new(dirs_list)
-                    .highlight_style(Style::default().bg(Color::Cyan))
+                    .highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black))
                     .highlight_symbol("=> ");
 
                 frame.render_stateful_widget(
@@ -453,7 +577,7 @@ let footer_text = match self.active_block {
                     .collect();
 
                 let list = List::new(file_list)
-                    .highlight_style(Style::default().bg(Color::Yellow))
+                    .highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black))
                     .highlight_symbol("=> ");
 
                 frame.render_stateful_widget(
@@ -499,12 +623,99 @@ let footer_text = match self.active_block {
                         Err("Unsupported file type".to_string())
                     };
 
-                    // Update status message based on the result
                     self.alchemy_status = Some(match result {
                         Ok(_) => StatusMessage::Success("Conversion done!".to_string()),
                         Err(e) => StatusMessage::Error(e),
                     });
                 }
+                _ => {}
+            }
+        }
+
+        if self.active_block == ActiveBlock::Right
+            && self.selected_alchemy == 1
+            && self.vidmenu == VideoMenu::VideoConvert
+        {
+            match key_event.code {
+                KeyCode::Enter => {
+
+                    let input = self.current_dir.clone();
+
+                    let result = match self.video_option {
+
+                        0 => {
+                            let output = input.replace(".mp4", ".mkv");
+                            self.mp4_to_mkv(&input, &output)
+                        }
+
+                        2 => {
+                            let output = input.replace(".mp4", ".webm");
+                            self.mp4_to_webm(&input, &output)
+                        }
+
+                        1 => {
+                            let output = input.replace(".mkv", ".mp4");
+                            self.mp4_to_mkv(&input, &output)
+                        }
+
+                        3 => {
+                            let output = input.replace(".webm", ".mp4");
+                            self.webm_to_mp4(&input, &output)
+                        }
+
+                        _ => Err("Unsupported conversion".to_string()),
+                    };
+
+                    self.alchemy_status = Some(match result {
+                        Ok(_) => StatusMessage::Success("Conversion done!".to_string()),
+                        Err(e) => StatusMessage::Error(e),
+                    });
+                }
+
+                _ => {}
+            }
+        }
+
+        if self.active_block == ActiveBlock::Right
+            && self.selected_alchemy == 2
+            && self.audmenu == AudioMenu::AudioConvert
+        {
+            match key_event.code {
+                KeyCode::Enter => {
+
+                    let input = self.current_dir.clone();
+
+                    let result = match self.audio_option {
+
+                        0 => {
+                            let output = input.replace(".mp3", ".wav");
+                            self.mp3_to_wav(&input, &output)
+                        }
+
+                        1 => {
+                            let output = input.replace(".wav", ".mp3");
+                            self.wav_to_mp3(&input, &output)
+                        }
+
+                        2 => {
+                            let output = input.replace(".mp3", ".m4a");
+                            self.mp3_to_m4a(&input, &output)
+                        }
+
+                        3 => {
+                            let output = input.replace(".m4a", ".mp3");
+                            self.m4a_to_mp3(&input, &output)
+                        }
+
+                        _ => Err("Unsupported conversion".to_string()),
+                    };
+
+                    self.alchemy_status = Some(match result {
+                        Ok(_) => StatusMessage::Success("Conversion done!".to_string()),
+                        Err(e) => StatusMessage::Error(e),
+                    });
+                }
+
                 _ => {}
             }
         }
@@ -719,55 +930,35 @@ let footer_text = match self.active_block {
                                 }
                             }
                         }
- KeyCode::Char('j') => {
-            match self.left_mode {
 
+        KeyCode::Char('j') => {
+            match self.left_mode {
                 LeftMode::Directories => {
                     if !self.dirs.is_empty() {
-                        let i = match self.dirs_state.selected() {
-                            Some(i) if i + 1 < self.dirs.len() => i + 1,
-                            Some(i) => i,
-                            None => 0,
-                        };
-                        self.dirs_state.select(Some(i));
+                        let i = self.dirs_state.selected().unwrap_or(0).saturating_add(1);
+                        self.dirs_state.select(Some(i.min(self.dirs.len() - 1)));
                     }
                 }
-
                 LeftMode::Files => {
                     if !self.files.is_empty() {
-                        let i = match self.files_state.selected() {
-                            Some(i) if i + 1 < self.files.len() => i + 1,
-                            Some(i) => i,
-                            None => 0,
-                        };
-                        self.files_state.select(Some(i));
+                        let i = self.files_state.selected().unwrap_or(0).saturating_add(1);
+                        self.files_state.select(Some(i.min(self.files.len() - 1)));
                     }
                 }
             }
         }
 
-        // MOVE UP
         KeyCode::Char('k') => {
             match self.left_mode {
-
                 LeftMode::Directories => {
                     if !self.dirs.is_empty() {
-                        let i = match self.dirs_state.selected() {
-                            Some(i) if i > 0 => i - 1,
-                            Some(i) => 0,
-                            None => 0,
-                        };
+                        let i = self.dirs_state.selected().unwrap_or(0).saturating_sub(1);
                         self.dirs_state.select(Some(i));
                     }
                 }
-
                 LeftMode::Files => {
                     if !self.files.is_empty() {
-                        let i = match self.files_state.selected() {
-                            Some(i) if i > 0 => i - 1,
-                            Some(i) => 0,
-                            None => 0,
-                        };
+                        let i = self.files_state.selected().unwrap_or(0).saturating_sub(1);
                         self.files_state.select(Some(i));
                     }
                 }
@@ -836,26 +1027,9 @@ let footer_text = match self.active_block {
                 _ => {}
             }
         }
+
         if self.active_block == ActiveBlock::Left && !self.dirs.is_empty() {
             match key_event.code {
-                KeyCode::Char('j') => {
-                    let i = match self.dirs_state.selected() {
-                        Some(i) => {
-                            if i + 1 >= self.dirs.len() { i } else { i + 1 }
-                        }
-                        None => 0,
-                    };
-                    self.dirs_state.select(Some(i));
-                }
-                KeyCode::Char('k') => {
-                    let i = match self.dirs_state.selected() {
-                        Some(i) => {
-                            if i == 0 { 0 } else { i - 1 }
-                        }
-                        None => 0,
-                    };
-                    self.dirs_state.select(Some(i));
-                }
                 KeyCode::Char('d') => {
                     if let Some(selected) = self.dirs_state.selected() {
                     }
