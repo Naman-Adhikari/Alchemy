@@ -1,4 +1,4 @@
-# Alchemy
+# Alchemy (beta) :)
 
 **Alchemy** is a terminal-based TUI (Text User Interface) multimedia conversion tool written in **Rust**. It allows you to navigate directories and perform **image, video, and audio conversions** directly from your terminal.
 
@@ -32,6 +32,11 @@
 1. Install Dependencies
 2. Clone this repository:
 3. Cargo build and run
+
+## Future Features
+1. Video to Audio conversions
+2. Compression and quality modifications of files
+3. jpg, png etc to pdf and pdf manipulations
 
 ```bash
 git clone https://github.com/yourusername/alchemy.git
