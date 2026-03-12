@@ -344,7 +344,7 @@ impl App {
         [inner_chunk_l[0], inner_chunk_l[1]]
     }
 
-    fn left_block(&self) -> Block {
+    fn left_block(&self) -> Block<'_> {
         let style = if self.active_block == ActiveBlock::Left {
             Style::default().fg(Color::Blue)
         } else {
@@ -354,7 +354,7 @@ impl App {
         Block::default().border_style(style).borders(Borders::ALL)
     }
 
-    fn right_block(&self) -> Block {
+    fn right_block(&self) -> Block<'_> {
         //let style = if self.active_block == ActiveBlock::Right {
             //Style::default().fg(Color::Blue)
         //} else {
@@ -1031,7 +1031,7 @@ let footer_text = match self.active_block {
         if self.active_block == ActiveBlock::Left && !self.dirs.is_empty() {
             match key_event.code {
                 KeyCode::Char('d') => {
-                    if let Some(selected) = self.dirs_state.selected() {
+                    if let Some(_selected) = self.dirs_state.selected() {
                     }
                 }
                 _ => {}
